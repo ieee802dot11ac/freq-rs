@@ -26,6 +26,7 @@ fn readstr(src: &mut File) -> Result<String, Box<dyn Error>> {
     Ok(ret)
 }
 
+#[derive(Clone)]
 struct RndEntry {
     filetype: String,
     filename: String,
@@ -84,10 +85,9 @@ impl RndFile {
 
     pub fn export(&mut self, dump: &PathBuf) -> Result<(), Box<dyn Error>> {
         let sliced_filestack = self.files.as_mut_slice();
-        let mut files_windows = sliced_filestack.windows(4);
         let mut offsets = vec![0usize];
         let mut files_vecs: Vec<Vec<u8>> = vec![vec![]];
-        for i in 0..self.entry_ct {
+        /*for i in 0..self.entry_ct {
             match files_windows.position(|delim| delim == [0xADu8, 0xDE, 0xAD, 0xDE]) {
                 Some(x) => {
                     offsets.push(x); 
@@ -99,38 +99,32 @@ impl RndFile {
                 },
                 None => continue
             }
-        }
-         // let mut files_2 = sliced_filestack.split(|delim| delim == [0xADu8, 0xDE, 0xAD, 0xDE]);
-        /*let mut files_2: Vec<Vec<u8>> = vec![vec![0u8]];
-        let mut parts_of_delim_found = 0;
-        let mut file_idx = 0;
-        for byt in sliced_filestack {
-            match byt {
-                0xAD => if parts_of_delim_found == 0 || parts_of_delim_found == 2 {
-                    parts_of_delim_found += 1;
-                } else {
-                    files_2[file_idx].push(*byt);
-                    parts_of_delim_found = 0;
-                },
-                0xDE => if parts_of_delim_found == 3 {
-                    parts_of_delim_found = 0;
-                    file_idx += 1;
-                    println!("found file #{file_idx}");
-                } else if parts_of_delim_found == 1 {
-                    parts_of_delim_found += 1;
-                } else {
-                    files_2[file_idx].push(*byt);
-                    parts_of_delim_found = 0;
-                },
-                _ => files_2[file_idx].push(*byt),
+        }*/
+        let mut prevpos: usize = 0;
+        for (position, arr) in sliced_filestack.windows(4).enumerate() {
+            if arr.starts_with(&[0xAD, 0xDE, 0xAD, 0xDE]) {
+                offsets.push(position + 4);
+                println!("file ending @ {}", position);
+                files_vecs.push(sliced_filestack[prevpos..position].to_vec());
+                prevpos = position + 4;
             }
         }
-        if file_idx == 0 {
-            panic!("what (zero files?)")
+        if files_vecs.len() - 1 != self.entry_ct as usize {
+            panic!("FUCK (found files doesn't match listed files)");
         }
-        if self.entry_ct != (file_idx - 1).try_into().unwrap() {
-            panic!("FUCK (entry count didn't match file count");
-        }*/
+        //let mut filenames: Vec<PathBuf> = vec![];
+        for i in 0 .. self.entry_ct as usize {
+            let e = &self.entries.clone()[i];
+            let mut f = dump.clone();
+            if e.filename.to_string().contains(|c| c == '.') {
+                f.push(e.filename.clone());
+            } else {
+                f.push(e.filename.clone() + "." + &e.filetype.to_lowercase());
+            }
+            println!("the idiot is going to {}", f.display());
+            //filenames.push(f);
+            fs::write(f, files_vecs[i].as_slice())?;
+        }
         Ok(())
     }
 }
@@ -166,6 +160,5 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         rnd.export(&outdir)?;
     }
-
     Ok(())
 }
